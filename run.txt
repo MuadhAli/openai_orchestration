@@ -1,0 +1,12 @@
+# Build image
+docker build -t openai .
+
+# Run it, mounting the .env file safely
+docker run --env-file .env openai
+
+# Run the docker compose file
+docker compose up --build
+
+# stop all the existed container
+docker container prune -f
+
