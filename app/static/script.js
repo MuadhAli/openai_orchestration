@@ -25,8 +25,26 @@ class ChatApp {
         this.successToast = document.getElementById('success-toast');
         this.successMessage = document.getElementById('success-message');
         
+        // Session sidebar elements
+        this.sidebarToggle = document.getElementById('sidebar-toggle');
+        this.sessionSidebar = document.getElementById('session-sidebar');
+        this.sessionList = document.getElementById('session-list');
+        this.newSessionButton = document.getElementById('new-session-btn');
+        
+        // Document upload elements
+        this.uploadButton = document.getElementById('upload-document-btn');
+        this.uploadModal = document.getElementById('upload-modal');
+        this.closeUploadModal = document.getElementById('close-upload-modal');
+        this.uploadForm = document.getElementById('upload-form');
+        this.uploadArea = document.getElementById('upload-area');
+        this.fileInput = document.getElementById('file-input');
+        this.fileInfo = document.getElementById('file-info');
+        this.uploadSubmit = document.getElementById('upload-submit');
+        this.cancelUpload = document.getElementById('cancel-upload');
+        this.documentsContainer = document.getElementById('documents-container');
+        
         // App state
-        this.conversationId = null;
+        this.currentSessionId = null;
         this.isLoading = false;
         this.lastFailedMessage = null;
         
@@ -38,10 +56,28 @@ class ChatApp {
      * Initialize the chat application
      */
     init() {
+        console.log('Initializing ChatApp...');
+        
+        // Check critical elements
+        if (!this.messageInput) {
+            console.error('Message input not found! ID: message-input');
+        }
+        if (!this.sendButton) {
+            console.error('Send button not found! ID: send-button');
+        }
+        if (!this.charCounter) {
+            console.error('Char counter not found! ID: char-counter');
+        }
+        
         this.bindEvents();
         this.updateSendButtonState();
         this.updateCharCounter();
         this.focusInput();
+        
+        // Integrate with session manager
+        if (window.sessionManager) {
+            this.currentSessionId = window.sessionManager.currentSessionId();
+        }
         
         console.log('ChatApp initialized successfully');
     }
@@ -50,6 +86,15 @@ class ChatApp {
      * Bind event listeners to DOM elements
      */
     bindEvents() {
+        // Check if elements exist before binding
+        if (!this.chatForm || !this.messageInput || !this.sendButton) {
+            console.error('Critical DOM elements not found!');
+            console.log('chatForm:', this.chatForm);
+            console.log('messageInput:', this.messageInput);
+            console.log('sendButton:', this.sendButton);
+            return;
+        }
+        
         // Form submission
         this.chatForm.addEventListener('submit', (e) => this.handleFormSubmit(e));
         
@@ -63,7 +108,42 @@ class ChatApp {
         this.messageInput.addEventListener('keydown', (e) => this.handleKeyDown(e));
         
         // New chat button
-        this.newChatButton.addEventListener('click', () => this.startNewChat());
+        this.newChatButton.addEventListener('click', () => {
+            this.createNewChat();
+        });
+        
+        // Session sidebar events
+        if (this.sidebarToggle) {
+            this.sidebarToggle.addEventListener('click', () => this.toggleSidebar());
+        }
+        
+        if (this.newSessionButton) {
+            this.newSessionButton.addEventListener('click', () => this.createNewChat());
+        }
+        
+        // Document upload events
+        if (this.uploadButton) {
+            this.uploadButton.addEventListener('click', () => this.showUploadModal());
+        }
+        
+        if (this.closeUploadModal) {
+            this.closeUploadModal.addEventListener('click', () => this.hideUploadModal());
+        }
+        
+        if (this.uploadArea && this.fileInput) {
+            this.uploadArea.addEventListener('click', () => this.fileInput.click());
+            this.uploadArea.addEventListener('dragover', (e) => this.handleDragOver(e));
+            this.uploadArea.addEventListener('drop', (e) => this.handleFileDrop(e));
+            this.fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+        }
+        
+        if (this.uploadSubmit) {
+            this.uploadSubmit.addEventListener('click', () => this.uploadDocument());
+        }
+        
+        if (this.cancelUpload) {
+            this.cancelUpload.addEventListener('click', () => this.hideUploadModal());
+        }
         
         // Error modal events
         this.closeErrorModal.addEventListener('click', () => this.hideErrorModal());
@@ -139,13 +219,28 @@ class ChatApp {
                 message: message
             };
             
-            // Include conversation ID if we have one
-            if (this.conversationId) {
-                requestData.conversation_id = this.conversationId;
+            // Get current session ID from session manager
+            let sessionId = window.sessionManager ? window.sessionManager.currentSessionId() : this.currentSessionId;
+            
+            // If no session exists, create one first
+            if (!sessionId) {
+                console.log('No session found, creating default session...');
+                if (window.sessionManager && window.sessionManager.createNewSession) {
+                    await window.sessionManager.createNewSession();
+                    // Get the new session ID
+                    sessionId = window.sessionManager.currentSessionId();
+                    if (!sessionId) {
+                        throw new Error('Failed to create session');
+                    }
+                } else {
+                    throw new Error('No session available and cannot create one');
+                }
             }
             
-            // Make API request
-            const response = await fetch('/api/chat', {
+            // Make API request to session-specific endpoint
+            const endpoint = `/api/sessions/${sessionId}/chat`;
+                
+            const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -159,21 +254,16 @@ class ChatApp {
             
             const data = await response.json();
             
-            if (!data.success) {
-                throw new Error(data.error || 'Failed to get response from AI');
+            // The new API returns {user_message: {...}, assistant_message: {...}}
+            if (!data.assistant_message) {
+                throw new Error('No assistant response received');
             }
-            
-            // Store conversation ID
-            this.conversationId = data.conversation_id;
             
             // Hide typing indicator
             this.hideTypingIndicator();
             
             // Add AI response to chat with animation
-            this.addMessageWithAnimation('assistant', data.message);
-            
-            // Save conversation to local storage
-            this.saveConversationToStorage();
+            this.addMessageWithAnimation('assistant', data.assistant_message.content);
             
             // Clear the failed message since it succeeded
             this.lastFailedMessage = null;
@@ -229,6 +319,11 @@ class ChatApp {
      * Update send button state based on input
      */
     updateSendButtonState() {
+        if (!this.messageInput || !this.sendButton) {
+            console.warn('Cannot update send button - elements missing');
+            return;
+        }
+        
         const hasText = this.messageInput.value.trim().length > 0;
         this.sendButton.disabled = !hasText || this.isLoading;
     }
@@ -237,17 +332,22 @@ class ChatApp {
      * Update character counter
      */
     updateCharCounter() {
+        if (!this.messageInput || !this.charCounter) {
+            console.warn('Cannot update char counter - elements missing');
+            return;
+        }
+        
         const currentLength = this.messageInput.value.length;
-        const maxLength = this.messageInput.maxLength;
+        const maxLength = this.messageInput.maxLength || 4000;
         this.charCounter.textContent = `${currentLength} / ${maxLength}`;
         
         // Change color if approaching limit
         if (currentLength > maxLength * 0.9) {
-            this.charCounter.style.color = 'var(--error-color)';
+            this.charCounter.style.color = 'var(--error-color, #ff0000)';
         } else if (currentLength > maxLength * 0.8) {
-            this.charCounter.style.color = 'var(--warning-color)';
+            this.charCounter.style.color = 'var(--warning-color, #ff9800)';
         } else {
-            this.charCounter.style.color = 'var(--text-secondary)';
+            this.charCounter.style.color = 'var(--text-secondary, #666)';
         }
     }
     
@@ -495,6 +595,17 @@ class ChatApp {
     }
     
     /**
+     * Create a new chat (same as new session)
+     */
+    async createNewChat() {
+        if (window.sessionManager) {
+            await window.sessionManager.createNewSession();
+        } else {
+            await this.startNewChat();
+        }
+    }
+
+    /**
      * Start a new chat conversation
      */
     async startNewChat() {
@@ -617,11 +728,183 @@ class ChatApp {
             return error.message || 'An unexpected error occurred. Please try again.';
         }
     }
-}
+    
+    // Session Management Methods
+    
+    /**
+     * Load sessions from the server
+     */
+    async loadSessions() {
+        try {
+            const response = await fetch('/api/sessions');
+            if (response.ok) {
+                const data = await response.json();
+                this.sessions = data.sessions || [];
+                this.renderSessions();
+                
+                // Auto-select first session if none selected
+                if (!this.currentSessionId && this.sessions.length > 0) {
+                    this.selectSession(this.sessions[0].id);
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load sessions:', error);
+        }
+    }
+    
+    /**
+     * Render sessions in the sidebar
+     */
+    renderSessions() {
+        if (!this.sessionList) return;
+        
+        this.sessionList.innerHTML = '';
+        
+        if (this.sessions.length === 0) {
+            const emptyState = document.createElement('div');
+            emptyState.className = 'empty-sessions';
+            emptyState.innerHTML = `
+                <p>No sessions yet</p>
+                <p>Create your first session to get started!</p>
+            `;
+            this.sessionList.appendChild(emptyState);
+            return;
+        }
+        
+        this.sessions.forEach(session => {
+            const sessionItem = document.createElement('div');
+            sessionItem.className = 'session-item';
+            sessionItem.dataset.sessionId = session.id;
+            
+            if (session.id === this.currentSessionId) {
+                sessionItem.classList.add('active');
+            }
+            
+            sessionItem.innerHTML = `
+                <div class="session-info">
+                    <div class="session-name">${session.name}</div>
+                    <div class="session-preview">${session.last_message || 'No messages yet'}</div>
+                </div>
+                <div class="session-actions">
+                    <button class="session-delete" data-session-id="${session.id}" aria-label="Delete session">×</button>
+                </div>
+            `;
+            
+            // Add click event for session selection
+            sessionItem.addEventListener('click', (e) => {
+                if (!e.target.classList.contains('session-delete')) {
+                    this.selectSession(session.id);
+                }
+            });
+            
+            // Add delete event
+            const deleteBtn = sessionItem.querySelector('.session-delete');
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.deleteSession(session.id);
+            });
+            
+            this.sessionList.appendChild(sessionItem);
+        });
+    }
+    
+    /**
+     * Create a new session
+     */
+    async createNewSession() {
+        try {
+            const response = await fetch('/api/sessions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    name: `Chat ${new Date().toLocaleString()}`
+                })
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                await this.loadSessions();
+                this.selectSession(data.id);
+                this.showSuccessToast('New session created!');
+            } else {
+                throw new Error('Failed to create session');
+            }
+        } catch (error) {
+            console.error('Error creating session:', error);
+            this.showErrorModal('Failed to create new session. Please try again.');
+        }
+    }
+    
+    /**
+     * Select a session
+     */
+    async selectSession(sessionId) {
+        this.currentSessionId = sessionId;
+        
+        // Update UI
+        document.querySelectorAll('.session-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        
+        const selectedItem = document.querySelector(`[data-session-id="${sessionId}"]`);
+        if (selectedItem) {
+            selectedItem.classList.add('active');
+        }
+        
+        // Load session messages
+        await this.loadSessionMessages(sessionId);
+    }
+    
+    /**
+     * Load messages for a session
+     */
+    async loadSessionMessages(sessionId) {
+        try {
+            const response = await fetch(`/api/sessions/${sessionId}/messages`);
+            if (response.ok) {
+                const data = await response.json();
+                this.clearMessages();
+                
+                data.messages.forEach(message => {
+                    this.addMessageWithAnimation(message.role, message.content);
+                });
+                
+                if (data.messages.length === 0) {
+                    // Show welcome message for empty sessions
+                    this.clearMessages();
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load session messages:', error);
+        }
+    }
+    
+    /**
+     * Delete a session
+     */
+    async deleteSession(sessionId) {
+        if (!confirm('Are you sure you want to delete this session?')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/sessions/${sessionId}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                await this.lo
 
 // Initialize the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    window.chatApp = new ChatApp();
+    console.log('DOM loaded, initializing ChatApp...');
+    
+    // Add a small delay to ensure all elements are rendered
+    setTimeout(() => {
+        window.chatApp = new ChatApp();
+    }, 100);
 });
 
 // Handle page visibility changes to maintain connection

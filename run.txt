@@ -10,3 +10,32 @@ docker compose up --build
 # stop all the existed container
 docker container prune -f
 
+#run the new setup
+wsl docker compose up --build
+
+#down the docker 
+docker compose down
+
+
+# View real-time logs
+docker compose logs -f chatgpt_web_ui
+
+# View last 50 lines
+docker compose logs --tail=50 chatgpt_web_ui
+
+# View MySQL logs
+docker compose logs -f rag_chat_mysql
+
+
+
+# Start/restart
+wsl docker compose up --build -d
+
+# Check status
+wsl docker compose ps
+
+# View logs
+wsl docker compose logs -f
+
+# Stop
+wsl docker compose down

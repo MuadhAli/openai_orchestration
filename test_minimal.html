@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Minimal Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .input-area { margin: 20px 0; }
+        textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .counter { font-size: 12px; color: #666; margin-top: 5px; }
+        .messages { border: 1px solid #ddd; padding: 10px; margin: 10px 0; min-height: 200px; background: #f9f9f9; }
+        .message { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .user { background: #007bff; color: white; text-align: right; }
+        .assistant { background: #e9ecef; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Minimal Chat Test</h1>
+        
+        <div class="messages" id="messages">
+            <div>Welcome! Type a message below to test the chat.</div>
+        </div>
+        
+        <div class="input-area">
+            <form id="chat-form">
+                <textarea id="message-input" placeholder="Type your message..." rows="3" maxlength="4000"></textarea>
+                <div class="counter" id="char-counter">0 / 4000</div>
+                <button type="submit" id="send-button" disabled>Send Message</button>
+            </form>
+        </div>
+        
+        <div id="status"></div>
+    </div>
+    
+    <script>
+        // Simple chat implementation
+        class MinimalChat {
+            constructor() {
+                this.form = document.getElementById('chat-form');
+                this.input = document.getElementById('message-input');
+                this.button = document.getElementById('send-button');
+                this.counter = document.getElementById('char-counter');
+                this.messages = document.getElementById('messages');
+                this.status = document.getElementById('status');
+                
+                this.sessionId = null;
+                this.init();
+            }
+            
+            init() {
+                console.log('Initializing minimal chat...');
+                
+                // Check elements
+                if (!this.input) {
+                    this.log('ERROR: Input not found');
+                    return;
+                }
+                
+                this.log('✅ All elements found');
+                
+                // Bind events
+                this.input.addEventListener('input', () => this.updateUI());
+                this.form.addEventListener('submit', (e) => this.sendMessage(e));
+                
+                this.updateUI();
+                this.createSession();
+            }
+            
+            updateUI() {
+                const length = this.input.value.length;
+                this.counter.textContent = `${length} / 4000`;
+                this.button.disabled = length === 0;
+            }
+            
+            async createSession() {
+                try {
+                    this.log('Creating session...');
+                    const response = await fetch('/api/sessions', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: 'Minimal Test' })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        this.sessionId = data.id;
+                        this.log(`✅ Session created: ${this.sessionId.substring(0, 8)}...`);
+                    } else {
+                        this.log(`❌ Session creation failed: ${response.status}`);
+                    }
+                } catch (error) {
+                    this.log(`❌ Session error: ${error.message}`);
+                }
+            }
+            
+            async sendMessage(e) {
+                e.preventDefault();
+                
+                const message = this.input.value.trim();
+                if (!message || !this.sessionId) return;
+                
+                this.log('Sending message...');
+                this.addMessage('user', message);
+                this.input.value = '';
+                this.updateUI();
+                
+                try {
+                    const response = await fetch(`/api/sessions/${this.sessionId}/chat`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        const aiMessage = data.assistant_message.content;
+                        this.addMessage('assistant', aiMessage);
+                        this.log('✅ Message sent successfully');
+                    } else {
+                        this.log(`❌ Message failed: ${response.status}`);
+                    }
+                } catch (error) {
+                    this.log(`❌ Message error: ${error.message}`);
+                }
+            }
+            
+            addMessage(role, content) {
+                const div = document.createElement('div');
+                div.className = `message ${role}`;
+                div.textContent = content;
+                this.messages.appendChild(div);
+                this.messages.scrollTop = this.messages.scrollHeight;
+            }
+            
+            log(message) {
+                console.log(message);
+                this.status.innerHTML = `<div>${new Date().toLocaleTimeString()}: ${message}</div>` + this.status.innerHTML;
+            }
+        }
+        
+        // Initialize when DOM is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            new MinimalChat();
+        });
+    </script>
+</body>
+</html>

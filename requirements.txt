@@ -1,6 +1,5 @@
 openai
 python-dotenv
-watchdog
 fastapi
 uvicorn[standard]
 pydantic
@@ -8,3 +7,9 @@ pytest
 pytest-asyncio
 httpx
 pytest-mock
+sqlalchemy
+pymysql
+cryptography
+numpy
+scikit-learn
+python-multipart

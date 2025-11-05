@@ -3,110 +3,67 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="ChatGPT-like web interface for AI conversations">
-    <meta name="author" content="ChatGPT Web UI">
     <title>ChatGPT Web UI</title>
-    <link rel="stylesheet" href="/static/style.css">
-    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="/static/new-style.css">
 </head>
 <body>
-    <div class="app-container">
-        <!-- Header -->
-        <header class="app-header">
-            <div class="header-content">
-                <h1 class="app-title">
-                    <span class="logo-icon">🤖</span>
-                    ChatGPT Web UI
-                </h1>
-                <button id="new-chat-btn" class="new-chat-button" aria-label="Start new conversation">
-                    <span class="button-icon">+</span>
-                    New Chat
+    <div class="app">
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <button class="new-chat-btn" id="new-chat-btn">
+                    + New Chat
                 </button>
             </div>
-        </header>
+            <div class="chat-list" id="chat-list">
+                <!-- Chat items will be populated here -->
+            </div>
+        </div>
 
-        <!-- Main Chat Container -->
-        <main class="chat-container">
-            <!-- Messages Area -->
-            <div id="messages-container" class="messages-container" role="log" aria-live="polite" aria-label="Chat messages">
-                <!-- Welcome Message -->
-                <div class="welcome-message">
-                    <div class="welcome-icon">👋</div>
-                    <h2>Welcome to ChatGPT Web UI</h2>
-                    <p>Start a conversation by typing a message below. I'm here to help with any questions or tasks you have!</p>
+        <!-- Overlay for mobile -->
+        <div class="overlay" id="overlay"></div>
+
+        <!-- Main Chat Area -->
+        <div class="main-area">
+            <div class="chat-header">
+                <button class="mobile-menu-btn" id="mobile-menu-btn">☰</button>
+                <div class="chat-title">ChatGPT</div>
+            </div>
+
+            <div class="messages-area" id="messages-area">
+                <div class="welcome-message" id="welcome-message">
+                    <h2>👋 Welcome to ChatGPT</h2>
+                    <p>Start a conversation by typing a message below.</p>
                 </div>
             </div>
 
-            <!-- Loading Indicator -->
-            <div id="loading-indicator" class="loading-indicator" style="display: none;" aria-hidden="true">
-                <div class="loading-dots">
-                    <span></span>
-                    <span></span>
-                    <span></span>
+            <div class="input-area">
+                <div class="input-container">
+                    <form id="chat-form">
+                        <div class="input-wrapper">
+                            <textarea 
+                                id="message-input" 
+                                class="message-input" 
+                                placeholder="Type your message here..."
+                                rows="1"
+                                maxlength="4000"
+                            ></textarea>
+                            <button type="submit" class="send-btn" id="send-btn" disabled>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="input-footer">
+                            <span class="char-counter" id="char-counter">0 / 4000</span>
+                            <span>Press Enter to send, Shift+Enter for new line</span>
+                        </div>
+                    </form>
                 </div>
-                <span class="loading-text">AI is thinking...</span>
-            </div>
-        </main>
-
-        <!-- Input Form -->
-        <footer class="input-container">
-            <form id="chat-form" class="chat-form" role="form" aria-label="Send message form">
-                <div class="input-wrapper">
-                    <textarea 
-                        id="message-input" 
-                        class="message-input" 
-                        placeholder="Type your message here..." 
-                        rows="1"
-                        maxlength="4000"
-                        aria-label="Message input"
-                        aria-describedby="char-counter"
-                        required
-                    ></textarea>
-                    <button 
-                        id="send-button" 
-                        type="submit" 
-                        class="send-button" 
-                        aria-label="Send message"
-                        disabled
-                    >
-                        <svg class="send-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="22" y1="2" x2="11" y2="13"></line>
-                            <polygon points="22,2 15,22 11,13 2,9"></polygon>
-                        </svg>
-                    </button>
-                </div>
-                <div class="input-footer">
-                    <span id="char-counter" class="char-counter">0 / 4000</span>
-                    <span class="input-hint">Press Enter to send, Shift+Enter for new line</span>
-                </div>
-            </form>
-        </footer>
-    </div>
-
-    <!-- Error Modal -->
-    <div id="error-modal" class="modal" style="display: none;" role="dialog" aria-labelledby="error-title" aria-hidden="true">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="error-title" class="modal-title">⚠️ Error</h3>
-                <button id="close-error-modal" class="modal-close" aria-label="Close error dialog">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p id="error-message" class="error-message"></p>
-            </div>
-            <div class="modal-footer">
-                <button id="retry-button" class="retry-button">Try Again</button>
-                <button id="dismiss-error" class="dismiss-button">Dismiss</button>
             </div>
         </div>
     </div>
 
-    <!-- Success Toast -->
-    <div id="success-toast" class="toast success-toast" style="display: none;" role="alert" aria-live="assertive">
-        <span class="toast-icon">✅</span>
-        <span id="success-message" class="toast-message"></span>
-    </div>
-
-    <!-- Scripts -->
-    <script src="/static/script.js"></script>
+    <script src="/static/new-script.js"></script>
 </body>
 </html>

@@ -1,6 +1,24 @@
-version: '3.9'
-
 services:
+  mysql:
+    image: mysql:8.0
+    container_name: rag_chat_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: rag_chat_db
+      MYSQL_USER: chatuser
+      MYSQL_PASSWORD: chatpassword
+    # ports:
+    #   - "3308:3306"  # Commented out to avoid port conflicts
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - chatgpt-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
   chatgpt-web-ui:
     build: .
     container_name: chatgpt_web_ui
@@ -10,24 +28,40 @@ services:
     environment:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=chatuser
+      - DB_PASSWORD=chatpassword
+      - DB_NAME=rag_chat_db
     volumes:
       - .:/app               # Mount code folder for development
       - /app/__pycache__     # Exclude pycache from volume mount
     command: >
+      sh -c "
+      echo 'Waiting for MySQL to be ready...' &&
+      sleep 10 &&
+      python app/database/init_db.py &&
       uvicorn app.main:app 
       --host 0.0.0.0 
       --port 8000 
       --reload 
       --reload-dir /app
+      "
     restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
     networks:
       - chatgpt-network
+
+volumes:
+  mysql_data:
 
 networks:
   chatgpt-network:

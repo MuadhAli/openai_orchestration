@@ -1,181 +1,92 @@
 """
-Chat API routes for handling chat messages and conversation management.
+API routes for RAG-enhanced chat functionality.
 """
-import logging
-from fastapi import APIRouter, HTTPException, Depends, Request
-from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
-from typing import Dict, Any
-from pydantic import ValidationError
+from typing import List, Dict, Any
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from pydantic import BaseModel, Field
 
-from app.models.chat import ChatRequest, ChatResponse, ErrorResponse
-from app.services.chat_service import (
-    ChatService, 
-    ChatServiceError, 
-    APIKeyError, 
-    ConversationError, 
-    OpenAIAPIError
-)
+from app.database.config import get_database_session
+from app.services.rag_chat_service import RAGChatService
+from app.models.message import MessageResponse
 
-# Configure logging
-logger = logging.getLogger(__name__)
-
-# Create router instance
 router = APIRouter(prefix="/api", tags=["chat"])
 
-# Global chat service instance
-chat_service = None
+
+class ChatRequest(BaseModel):
+    """Request model for chat messages."""
+    message: str = Field(..., min_length=1, max_length=10000, description="User message")
 
 
-def get_chat_service() -> ChatService:
-    """Dependency to get the chat service instance."""
-    global chat_service
-    if chat_service is None:
-        try:
-            chat_service = ChatService()
-        except APIKeyError as e:
-            logger.error(f"Failed to initialize ChatService: {str(e)}")
-            raise HTTPException(
-                status_code=503,
-                detail="Service unavailable: Invalid API configuration"
-            )
-        except Exception as e:
-            logger.error(f"Unexpected error initializing ChatService: {str(e)}")
-            raise HTTPException(
-                status_code=503,
-                detail="Service unava
+class ChatResponse(BaseModel):
+    """Response model for chat messages."""
+    user_message: MessageResponse
+    assistant_message: MessageResponse
 
 
-@router.post("/chat", response_model=ChatResponse)
-async def send_message(
-    request: ChatRequest,
-    service: ChatService = Depends(get_chat_service)
-) -> ChatResponse:
-    """
-    Send a message to the AI assistant and get a response.
-    
-    Args:
-        request: ChatRequest containing the user's message and optional conversation_id
-        service: ChatService dependency for handling the chat logic
-        
-    Returns:
-        ChatResponse with the AI's response or error information
-        
-    Raises:
-        HTTPException: For validation errors or server errors
-    """
+def get_chat_service(db: Session = Depends(get_database_session)) -> RAGChatService:
+    """Dependency to get RAG chat service."""
+    return RAGChatService(db)
+
+
+@router.post("/sessions/{session_id}/chat", response_model=ChatResponse)
+async def send_chat_message(
+    session_id: str,
+    chat_request: ChatRequest,
+    service: RAGChatService = Depends(get_chat_service)
+):
+    """Send a message and get AI response with RAG enhancement."""
     try:
-        logger.info(f"Received chat message: {request.message[:50]}...")
+        # Process the message and get response
+        assistant_response = await service.process_chat_message(session_id, chat_request.message)
         
-        # Validate request
-        if not request.message or not request.message.strip():
-            raise HTTPException(
-                status_code=400,
-                detail="Message cannot be empty"
-            )
+        # Get the user message (it was created in process_chat_message)
+        chat_history = service.get_chat_history(session_id)
         
-        # Send message to chat service
-        response = await service.send_message(request)
+        # Find the user message (should be the second to last message)
+        user_message_data = None
+        for msg in reversed(chat_history):
+            if msg["role"] == "user" and msg["content"] == chat_request.message:
+                user_message_data = msg
+                break
         
-        # Check if the service returned an error
-        if not response.success:
-            logger.error(f"Chat service error: {response.error}")
-            raise HTTPException(
-                status_code=500,
-                detail=response.error or "Failed to process message"
-            )
+        if not user_message_data:
+            raise HTTPException(status_code=500, detail="Failed to retrieve user message")
         
-        logger.info(f"Successfully processed message for conversation: {response.conversation_id}")
-        return response
+        # Convert to MessageResponse format
+        user_message = MessageResponse(
+            id=user_message_data["id"],
+            session_id=session_id,
+            content=user_message_data["content"],
+            role=user_message_data["role"],
+            timestamp=user_message_data["timestamp"]
+        )
+        
+        return ChatResponse(
+            user_message=user_message,
+            assistant_message=assistant_response
+        )
         
     except HTTPException:
-        # Re-raise HTTP exceptions as-is
         raise
     except Exception as e:
-        logger.error(f"Unexpected error in send_message: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error occurred while processing your message"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to process chat message: {str(e)}")
 
 
-@router.post("/chat/new")
-async def start_new_conversation(
-    service: ChatService = Depends(get_chat_service)
-) -> Dict[str, Any]:
-    """
-    Start a new conversation by creating a new conversation ID.
-    
-    Args:
-        service: ChatService dependency for handling the chat logic
-        
-    Returns:
-        Dictionary containing the new conversation_id and success status
-        
-    Raises:
-        HTTPException: For server errors
-    """
+@router.get("/sessions/{session_id}/history")
+async def get_chat_history(
+    session_id: str,
+    service: RAGChatService = Depends(get_chat_service)
+):
+    """Get chat history for a session."""
     try:
-        logger.info("Creating new conversation")
-        
-        # Create new conversation
-        conversation_id = service.create_conversation()
-        
-        logger.info(f"Created new conversation: {conversation_id}")
-        
-        return {
-            "success": True,
-            "conversation_id": conversation_id,
-            "message": "New conversation started successfully"
-        }
-        
+        history = service.get_chat_history(session_id)
+        return {"messages": history}
     except Exception as e:
-        logger.error(f"Error creating new conversation: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to create new conversation"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get chat history: {str(e)}")
 
 
 @router.get("/health")
-async def health_check(
-    service: ChatService = Depends(get_chat_service)
-) -> Dict[str, Any]:
-    """
-    Perform a health check of the chat service and OpenAI API connection.
-    
-    Args:
-        service: ChatService dependency for performing the health check
-        
-    Returns:
-        Dictionary containing health status information
-    """
-    try:
-        logger.info("Performing health check")
-        
-        # Get health status from chat service
-        health_status = service.health_check()
-        
-        # Determine HTTP status code based on health
-        if health_status.get("status") == "healthy":
-            status_code = 200
-            logger.info("Health check passed")
-        else:
-            status_code = 503  # Service Unavailable
-            logger.warning(f"Health check failed: {health_status.get('error', 'Unknown error')}")
-        
-        return JSONResponse(
-            status_code=status_code,
-            content=health_status
-        )
-        
-    except Exception as e:
-        logger.error(f"Health check error: {str(e)}")
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "unhealthy",
-                "error": "Health check failed due to internal error",
-                "details": str(e)
-            }
-        )
+async def health_check():
+    """Health check endpoint."""
+    return {"status": "healthy", "service": "RAG Chat API"}

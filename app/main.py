@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 import logging
 
-from app.services.chat_service import ChatService
+# from app.services.chat_service import ChatService  # Temporarily disabled
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -32,7 +32,7 @@ app.add_middleware(
 )
 
 # Initialize chat service
-chat_service = ChatService()
+# chat_service = ChatService()  # Temporarily disabled
 
 # Get the directory where this file is located
 BASE_DIR = Path(__file__).resolve().parent
@@ -47,7 +47,11 @@ else:
 
 # Include API routes
 from app.routes.chat import router as chat_router
+from app.routes.sessions import router as sessions_router
+# Document routes removed - using conversational RAG instead
 app.include_router(chat_router)
+app.include_router(sessions_router)
+# app.include_router(documents_router)  # Removed for conversational RAG
 
 @app.get("/")
 async def serve_index():
@@ -72,17 +76,33 @@ async def startup_event():
     """Application startup event."""
     logger.info("ChatGPT Web UI application starting up...")
     
-    # Perform health check on chat service
-    health_status = chat_service.health_check()
-    if health_status["status"] == "healthy":
-        logger.info("Chat service is healthy and ready")
+    # Initialize database
+    from app.database.init_db import check_database_connection, init_database
+    
+    if check_database_connection():
+        logger.info("Database connection successful")
+        if init_database():
+            logger.info("Database initialized successfully")
+        else:
+            logger.warning("Database initialization failed")
     else:
-        logger.warning(f"Chat service health check failed: {health_status}")
+        logger.warning("Database connection failed - some features may not work")
+    
+    # Perform health check on chat service
+    # health_status = chat_service.health_check()  # Temporarily disabled
+    # if health_status["status"] == "healthy":
+    #     logger.info("Chat service is healthy and ready")
+    # else:
+    #     logger.warning(f"Chat service health check failed: {health_status}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Application shutdown event."""
     logger.info("ChatGPT Web UI application shutting down...")
+    
+    # Close database connections
+    from app.database.config import db_config
+    db_config.close_engine()
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Frontend</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .debug { background: #f0f0f0; padding: 10px; margin: 10px 0; }
+        .error { background: #ffebee; color: #c62828; }
+        .success { background: #e8f5e8; color: #2e7d32; }
+    </style>
+</head>
+<body>
+    <h1>Frontend Debug</h1>
+    <button onclick="checkElements()">Check DOM Elements</button>
+    <button onclick="testAPI()">Test API</button>
+    <button onclick="openMainApp()">Open Main App</button>
+    
+    <div id="debug-output"></div>
+    
+    <script>
+        function log(message, type = 'info') {
+            const output = document.getElementById('debug-output');
+            const div = document.createElement('div');
+            div.className = `debug ${type}`;
+            div.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            output.appendChild(div);
+        }
+        
+        function checkElements() {
+            log('Checking DOM elements...');
+            
+            // Open main app in iframe to check elements
+            const iframe = document.createElement('iframe');
+            iframe.src = 'http://localhost:8000';
+            iframe.style.display = 'none';
+            document.body.appendChild(iframe);
+            
+            iframe.onload = function() {
+                try {
+                    const doc = iframe.contentDocument;
+                    
+                    const elements = [
+                        'message-input',
+                        'send-button',
+                        'char-counter',
+                        'chat-form',
+                        'messages-container'
+                    ];
+                    
+                    elements.forEach(id => {
+                        const element = doc.getElementById(id);
+                        if (element) {
+                            log(`✅ Found: ${id}`, 'success');
+                        } else {
+                            log(`❌ Missing: ${id}`, 'error');
+                        }
+                    });
+                    
+                    // Check if scripts loaded
+                    const scripts = doc.querySelectorAll('script');
+                    log(`Found ${scripts.length} script tags`);
+                    
+                    // Check console errors
+                    log('Check browser console for JavaScript errors');
+                    
+                } catch (e) {
+                    log(`Error checking elements: ${e.message}`, 'error');
+                }
+                
+                document.body.removeChild(iframe);
+            };
+        }
+        
+        async function testAPI() {
+            log('Testing API endpoints...');
+            
+            try {
+                const response = await fetch('http://localhost:8000/api/health');
+                if (response.ok) {
+                    const data = await response.json();
+                    log(`✅ API Health: ${data.status}`, 'success');
+                } else {
+                    log(`❌ API Health failed: ${response.status}`, 'error');
+                }
+            } catch (e) {
+                log(`❌ API Error: ${e.message}`, 'error');
+            }
+        }
+        
+        function openMainApp() {
+            window.open('http://localhost:8000', '_blank');
+        }
+        
+        // Auto-run checks
+        setTimeout(checkElements, 1000);
+        setTimeout(testAPI, 500);
+    </script>
+</body>
+</html>

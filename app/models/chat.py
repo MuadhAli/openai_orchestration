@@ -30,7 +30,8 @@ class Message(BaseModel):
 class ChatRequest(BaseModel):
     """Request model for sending a chat message."""
     message: str = Field(..., min_length=1, max_length=4000, description="The user's message")
-    conversation_id: Optional[str] = Field(None, description="Optional conversation ID for context")
+    session_id: Optional[str] = Field(None, description="Session ID for the chat (replaces conversation_id)")
+    conversation_id: Optional[str] = Field(None, description="Legacy conversation ID for backward compatibility")
     
     @validator('message')
     def validate_message(cls, v):
@@ -38,15 +39,35 @@ class ChatRequest(BaseModel):
         if not v or not v.strip():
             raise ValueError('Message cannot be empty')
         return v.strip()
+    
+    @validator('session_id')
+    def validate_session_id(cls, v):
+        """Validate session ID format if provided."""
+        if v is None:
+            return v
+        
+        if not v or not v.strip():
+            raise ValueError('Session ID cannot be empty')
+        
+        # Basic UUID format validation
+        v = v.strip()
+        if len(v) != 36 or v.count('-') != 4:
+            raise ValueError('Session ID must be a valid UUID format')
+        
+        return v
 
 
 class ChatResponse(BaseModel):
     """Response model for chat API endpoints."""
     message: str = Field(..., description="The AI assistant's response message")
-    conversation_id: str = Field(..., description="The conversation ID for this chat session")
+    session_id: str = Field(..., description="The session ID for this chat")
+    conversation_id: Optional[str] = Field(None, description="Legacy conversation ID for backward compatibility")
     success: bool = Field(True, description="Whether the request was successful")
     error: Optional[str] = Field(None, description="Error message if the request failed")
     timestamp: datetime = Field(default_factory=datetime.now, description="When the response was generated")
+    message_id: Optional[str] = Field(None, description="ID of the stored message")
+    token_count: Optional[int] = Field(None, description="Number of tokens in the response")
+    processing_time_ms: Optional[int] = Field(None, description="Processing time in milliseconds")
     
     @validator('message')
     def validate_message(cls, v):
