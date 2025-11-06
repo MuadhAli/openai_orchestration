@@ -101,6 +101,9 @@ class ChatApp {
             
             // Add AI response
             this.addMessage('assistant', data.assistant_message.content);
+            
+            // Refresh chat list to show updated session name (for first message)
+            await this.loadChats();
 
         } catch (error) {
             console.error('Chat error:', error);

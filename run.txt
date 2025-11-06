@@ -39,3 +39,49 @@ wsl docker compose logs -f
 
 # Stop
 wsl docker compose down
+
+
+# Connect to MySQL container
+wsl docker exec -it rag_chat_mysql mysql -u chatuser -p
+# When prompted, enter password: chatpassword
+
+
+# Enter the MySQL container
+wsl docker exec -it rag_chat_mysql bash
+
+# Then connect to MySQL
+mysql -u chatuser -p
+# Enter password: chatpassword
+
+
+-- Show all databases
+SHOW DATABASES;
+
+-- Use the RAG chat database
+USE rag_chat_db;
+
+-- Show all tables
+SHOW TABLES;
+
+-- View sessions table
+SELECT * FROM sessions;
+
+-- View messages table
+SELECT * FROM messages;
+
+-- View embeddings table (if exists)
+SELECT * FROM embeddings;
+
+-- Show table structure
+DESCRIBE sessions;
+DESCRIBE messages;
+
+-- Count records
+SELECT COUNT(*) FROM sessions;
+SELECT COUNT(*) FROM messages;
+
+-- Recent messages
+SELECT * FROM messages ORDER BY timestamp DESC LIMIT 10;
+
+-- Exit MySQL
+EXIT;

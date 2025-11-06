@@ -34,24 +34,27 @@ class RAGChatService:
             # 1. Store the user message
             user_msg = self.message_service.create_user_message(session_id, user_message)
             
-            # 2. Store embedding for the user message
+            # 2. Check if this is the first message and update session name
+            await self._update_session_name_if_first_message(session_id, user_message)
+            
+            # 3. Store embedding for the user message
             await self.conversational_rag.store_message_embedding(user_msg)
             
-            # 3. Get chat history for context
+            # 4. Get chat history for context
             chat_history = self.message_service.get_session_messages(session_id)
             
-            # 4. Get relevant context from past conversations
+            # 5. Get relevant context from past conversations
             relevant_conversations = await self.conversational_rag.find_relevant_conversations(
                 user_message, session_id
             )
             
-            # 5. Generate AI response
+            # 6. Generate AI response
             ai_response = self._generate_response(user_message, chat_history.messages, relevant_conversations)
             
-            # 6. Store the AI response
+            # 7. Store the AI response
             assistant_msg = self.message_service.create_assistant_message(session_id, ai_response)
             
-            # 7. Store embedding for the AI response
+            # 8. Store embedding for the AI response
             await self.conversational_rag.store_message_embedding(assistant_msg)
             
             logger.info(f"Processed chat message for session {session_id}")
@@ -135,3 +138,72 @@ Instructions:
         except Exception as e:
             logger.error(f"Error getting chat history: {str(e)}")
             return []
+    
+    async def _update_session_name_if_first_message(self, session_id: str, user_message: str) -> None:
+        """Update session name based on first user message."""
+        try:
+            # Check if this is the first user message in the session
+            from app.database.models import Message, MessageRole
+            
+            message_count = (
+                self.db_session.query(Message)
+                .filter(Message.session_id == session_id)
+                .filter(Message.role == MessageRole.USER)
+                .count()
+            )
+            
+            # If this is the first user message (count = 1 after storing), generate a name
+            if message_count == 1:
+                session_name = self._generate_session_name(user_message)
+                
+                # Update the session name
+                from app.database.models import Session
+                session = self.db_session.query(Session).filter(Session.id == session_id).first()
+                if session:
+                    session.name = session_name
+                    self.db_session.commit()
+                    logger.info(f"Updated session {session_id} name to: {session_name}")
+                    
+        except Exception as e:
+            logger.error(f"Error updating session name: {str(e)}")
+            # Don't fail the whole process if naming fails
+            pass
+    
+    def _generate_session_name(self, user_message: str) -> str:
+        """Generate a concise session name based on the first user message."""
+        try:
+            # Clean and truncate the message
+            message = user_message.strip()
+            
+            # Remove common question words and make it more title-like
+            common_starts = [
+                "how do i", "how can i", "how to", "what is", "what are", 
+                "can you", "could you", "please", "help me", "i need", "i want"
+            ]
+            
+            message_lower = message.lower()
+            for start in common_starts:
+                if message_lower.startswith(start):
+                    message = message[len(start):].strip()
+                    break
+            
+            # Remove question marks and exclamation marks
+            message = message.rstrip('?!.')
+            
+            # Capitalize first letter
+            if message:
+                message = message[0].upper() + message[1:]
+            
+            # Truncate to reasonable length
+            if len(message) > 50:
+                message = message[:47] + "..."
+            
+            # If message is too short or empty, use a default
+            if len(message) < 3:
+                message = "New Chat"
+            
+            return message
+            
+        except Exception as e:
+            logger.error(f"Error generating session name: {str(e)}")
+            return "New Chat"
