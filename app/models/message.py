@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, Field, validator
 
-
+# print hi 
 class MessageCreate(BaseModel):
     """Model for creating a new message."""
     session_id: str = Field(..., description="Session ID this message belongs to")

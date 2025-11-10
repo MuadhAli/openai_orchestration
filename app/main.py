@@ -43,7 +43,7 @@ if static_path.exists():
     app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
     logger.info(f"Static files mounted from: {static_path}")
 else:
-    logger.warning(f"Static directory not found: {static_path}")
+    logger.warning(f"Static directory is not found: {static_path}")
 
 # Include API routes
 from app.routes.chat import router as chat_router
