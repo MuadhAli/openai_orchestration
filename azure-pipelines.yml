@@ -22,27 +22,12 @@ stages:
         displayName: 'Build Docker Image'
         steps:
           - task: Docker@2
-            displayName: 'Login to ACR'
+            displayName: 'Build and Push Docker Image'
             inputs:
-              command: login
-              containerRegistry: 'ACR-ServiceConnection'  # You'll create this service connection
-
-          - task: Docker@2
-            displayName: 'Build Docker Image'
-            inputs:
-              command: build
-              repository: '$(imageName)'
-              dockerfile: 'Dockerfile'
-              tags: |
-                $(imageTag)
-                latest
-
-          - task: Docker@2
-            displayName: 'Push Image to ACR'
-            inputs:
-              command: push
+              command: buildAndPush
               containerRegistry: 'ACR-ServiceConnection'
               repository: '$(imageName)'
+              Dockerfile: 'Dockerfile'
               tags: |
                 $(imageTag)
                 latest
