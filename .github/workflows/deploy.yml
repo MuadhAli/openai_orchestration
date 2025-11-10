@@ -1,0 +1,148 @@
+name: Build and Deploy to Azure VM
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  ACR_NAME: orchestrationAgent
+  IMAGE_NAME: chatgpt-web-ui
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_NAME }}.azurecr.io
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+            ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Deploy to Azure VM via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USERNAME }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            # Login to ACR
+            echo "Logging into Azure Container Registry..."
+            echo "${{ secrets.ACR_PASSWORD }}" | sudo docker login ${{ env.ACR_NAME }}.azurecr.io -u ${{ secrets.ACR_USERNAME }} --password-stdin
+            
+            # Navigate to app directory
+            cd /home/azureuser/app || sudo mkdir -p /home/azureuser/app && cd /home/azureuser/app
+            
+            # Create docker-compose file if not exists
+            if [ ! -f docker-compose.yml ]; then
+              echo "Creating docker-compose.yml..."
+              sudo tee docker-compose.yml > /dev/null <<EOF
+            services:
+              mysql:
+                image: mysql:8.0
+                container_name: rag_chat_mysql
+                environment:
+                  MYSQL_ROOT_PASSWORD: \${MYSQL_ROOT_PASSWORD}
+                  MYSQL_DATABASE: rag_chat_db
+                  MYSQL_USER: chatuser
+                  MYSQL_PASSWORD: \${MYSQL_PASSWORD}
+                volumes:
+                  - mysql_data:/var/lib/mysql
+                networks:
+                  - chatgpt-network
+                restart: unless-stopped
+                healthcheck:
+                  test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+                  timeout: 20s
+                  retries: 10
+
+              chatgpt-web-ui:
+                image: ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+                container_name: chatgpt_web_ui
+                ports:
+                  - "8000:8000"
+                environment:
+                  - PYTHONPATH=/app
+                  - PYTHONUNBUFFERED=1
+                  - DB_HOST=mysql
+                  - DB_PORT=3306
+                  - DB_USER=chatuser
+                  - DB_PASSWORD=\${MYSQL_PASSWORD}
+                  - DB_NAME=rag_chat_db
+                  - OPENAI_API_KEY=\${OPENAI_API_KEY}
+                command: >
+                  sh -c "
+                  echo 'Waiting for MySQL to be ready...' &&
+                  sleep 10 &&
+                  python app/database/init_db.py &&
+                  uvicorn app.main:app --host 0.0.0.0 --port 8000
+                  "
+                restart: unless-stopped
+                depends_on:
+                  mysql:
+                    condition: service_healthy
+                healthcheck:
+                  test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+                  interval: 30s
+                  timeout: 10s
+                  retries: 3
+                  start_period: 60s
+                networks:
+                  - chatgpt-network
+
+            volumes:
+              mysql_data:
+
+            networks:
+              chatgpt-network:
+                driver: bridge
+            EOF
+            fi
+            
+            # Create .env file if not exists
+            if [ ! -f .env ]; then
+              echo "Creating .env file..."
+              sudo tee .env > /dev/null <<EOF
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }}
+            MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }}
+            EOF
+            fi
+            
+            # Stop existing containers
+            echo "Stopping existing containers..."
+            sudo docker compose down || true
+            
+            # Pull latest image
+            echo "Pulling latest Docker image..."
+            sudo docker pull ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+            
+            # Start containers
+            echo "Starting containers..."
+            sudo docker compose up -d
+            
+            # Clean up old images
+            echo "Cleaning up old images..."
+            sudo docker image prune -f
+            
+            echo "Deployment completed successfully!"

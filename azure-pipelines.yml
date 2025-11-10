@@ -5,7 +5,7 @@ trigger:
       - master
 
 pool:
-  vmImage: 'ubuntu-latest'
+  name: 'Default'  # Self-hosted agent pool
 
 variables:
   acrName: 'orchestrationAgent'  # e.g., myappregistry
