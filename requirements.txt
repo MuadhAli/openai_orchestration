@@ -13,3 +13,5 @@ cryptography
 numpy
 scikit-learn
 python-multipart
+mysql-connector-python
+mcp

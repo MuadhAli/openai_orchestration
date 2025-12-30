@@ -11,6 +11,7 @@ services:
     #   - "3308:3306"  # Commented out to avoid port conflicts
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./scripts/init_schema.sql:/docker-entrypoint-initdb.d/init_schema.sql
     networks:
       - chatgpt-network
     restart: unless-stopped

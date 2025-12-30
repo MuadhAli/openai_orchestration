@@ -11,6 +11,7 @@ from openai import OpenAI
 from app.services.message_service import MessageService
 from app.services.conversational_rag import ConversationalRAGService
 from app.services.embedding_service import EmbeddingService
+from app.services.orchestrator_service import OrchestratorService
 from app.models.message import MessageResponse
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ class RAGChatService:
         self.message_service = MessageService(db_session)
         self.embedding_service = EmbeddingService()
         self.conversational_rag = ConversationalRAGService(db_session, self.embedding_service)
+        self.orchestrator = OrchestratorService()
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.model = "gpt-3.5-turbo"
     
@@ -43,13 +45,13 @@ class RAGChatService:
             # 4. Get chat history for context
             chat_history = self.message_service.get_session_messages(session_id)
             
-            # 5. Get relevant context from past conversations
-            relevant_conversations = await self.conversational_rag.find_relevant_conversations(
-                user_message, session_id
-            )
+            # 5. Route query through orchestrator
+            formatted_history = [{"role": msg.role, "content": msg.content} for msg in chat_history.messages[-10:]]
+            orchestrator_result = await self.orchestrator.route_query(user_message, session_id, formatted_history)
             
-            # 6. Generate AI response
-            ai_response = self._generate_response(user_message, chat_history.messages, relevant_conversations)
+            # 6. Get AI response from orchestrator
+            ai_response = orchestrator_result["content"]
+            logger.info(f"Query routed to: {orchestrator_result['type']}, tools used: {orchestrator_result.get('tools_used', [])}")
             
             # 7. Store the AI response
             assistant_msg = self.message_service.create_assistant_message(session_id, ai_response)

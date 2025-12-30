@@ -62,6 +62,24 @@ async def serve_index():
     else:
         raise HTTPException(status_code=404, detail="Index file not found")
 
+@app.get("/new")
+async def serve_new_chat():
+    """Serve index.html for new chat route (client-side routing)."""
+    index_path = static_path / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+    else:
+        raise HTTPException(status_code=404, detail="Index file not found")
+
+@app.get("/chat/{session_id}")
+async def serve_chat_route(session_id: str):
+    """Serve index.html for chat route (client-side routing)."""
+    index_path = static_path / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+    else:
+        raise HTTPException(status_code=404, detail="Index file not found")
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     """Global exception handler for unhandled errors."""
